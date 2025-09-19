@@ -193,4 +193,4 @@ Mọi đóng góp đều được hoan nghênh! Vui lòng tạo issue hoặc pul
 
 ---
 
-Forest Guardian - Bảo vệ môi trường, một cây một lần!
+Forest Guardian - Bảo vệ môi trường, trồng cây gây rừng!
