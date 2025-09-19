@@ -1,0 +1,227 @@
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes subtleGlow {
+  0%, 100% { 
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  }
+  50% { 
+    box-shadow: 
+      0 4px 8px rgba(0, 0, 0, 0.3),
+      0 0 10px rgba(125, 216, 125, 0.3);
+  }
+}
+
+.game-scene {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #2c5530;
+  position: relative;
+  overflow: hidden;
+}
+
+.phaser-container {
+  border: 2px solid #7dd87d;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: subtleGlow 4s ease-in-out infinite;
+  
+  /* FIX: Đảm bảo container fit chính xác với canvas */
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  display: flex; /* Thay đổi từ block sang flex */
+  
+  /* FIX: Reset font để tránh whitespace */
+  line-height: 0;
+  font-size: 0;
+}
+
+.phaser-container canvas {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  
+  /* FIX: Loại bỏ vertical-align và thêm flex properties */
+  flex-shrink: 0; /* Không cho canvas shrink */
+  
+  /* FIX: Đảm bảo canvas fit hoàn toàn */
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain;
+  
+  /* FIX: SIÊU MẠNH - thêm 2px nữa cho cạnh dưới */
+  position: relative;
+  top: -2px;    /* Giữ nguyên top */
+  left: -1px;   /* Sát cạnh trái */
+  
+  /* FIX: PUSH SIÊU MẠNH thêm 2px */
+  width: calc(100% + 2px) !important;   /* Cover cạnh phải */
+  height: calc(100% + 30px) !important; /* Tăng từ +25px lên +30px */
+  
+  /* THÊM: Đẩy canvas xuống dưới SIÊU MẠNH */
+  bottom: -12px;  /* Tăng từ -8px lên -12px */
+  
+  /* THÊM: margin bottom để kéo thêm */
+  margin-bottom: -5px;
+}
+
+/* Cách khác - Perfect fit cho tất cả 4 cạnh */
+.phaser-container-ultra-fit {
+  border: 2px solid #7dd87d;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: subtleGlow 4s ease-in-out infinite;
+  
+  /* Ultra fit approach */
+  display: block;
+  padding: 0;
+  margin: 0;
+  line-height: 0;
+  font-size: 0;
+  overflow: hidden; /* Quan trọng để clip canvas overflow */
+  
+  width: fit-content;
+  height: fit-content;
+}
+
+.phaser-container-ultra-fit canvas {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  
+  /* MEGA NUCLEAR - 2px cuối cùng! */
+  position: absolute;  
+  top: -2px;    
+  left: -2px;   
+  bottom: -6px;  /* Tăng từ -4px lên -6px */
+  right: -2px;   
+  
+  /* Size MEGA để cover 2px cuối */
+  width: calc(100% + 8px) !important;   /* Tăng từ +6px lên +8px */
+  height: calc(100% + 8px) !important;  /* Tăng từ +6px lên +8px */
+  
+  /* Scale TUYỆT ĐỐI */
+  transform: scale(1.15);  /* Tăng từ 1.12 lên 1.15 */
+  transform-origin: center center;
+  
+  /* THÊM: padding để đảm bảo */
+  padding: 0 !important;
+  box-sizing: content-box;
+  
+  border-radius: 6px; /* Match với container radius - border width */
+}
+
+.loading-screen {
+  width: 100%;
+  height: 100%;
+  background-color: #2c5530;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.loading-screen h2 {
+  color: #7dd87d;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  font-family: 'Courier New', monospace;
+  margin: 0;
+}
+
+/* Camera controls */
+.camera-controls {
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid rgba(125, 216, 125, 0.6);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: #b8e6b8;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  transition: border-color 0.3s ease;
+}
+
+.camera-controls:hover {
+  border-color: rgba(125, 216, 125, 0.8);
+}
+
+.camera-controls h4 {
+  color: #7dd87d;
+  margin: 0 0 8px 0;
+  font-size: 13px;
+}
+
+.camera-controls ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.camera-controls li {
+  margin: 4px 0;
+  font-size: 11px;
+  color: #b8e6b8;
+}
+
+.pan-indicator {
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid rgba(255, 215, 0, 0.7);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #ffd700;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/* Debug helper - thêm class này để debug */
+.debug-container {
+  background: rgba(255, 0, 0, 0.2) !important;
+}
+
+.debug-container canvas {
+  background: rgba(0, 255, 0, 0.2) !important;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .camera-controls {
+    font-size: 10px;
+    padding: 8px 10px;
+    max-width: 160px;
+  }
+  
+  .camera-controls h4 {
+    font-size: 11px;
+  }
+  
+  .camera-controls li {
+    font-size: 10px;
+  }
+  
+  .pan-indicator {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+}

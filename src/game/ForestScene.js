@@ -1,0 +1,484 @@
+import Phaser from 'phaser';
+import { TileGenerator } from './TileGenerator';
+import { Plant } from './Plant';
+import { Environment } from './Environment';
+import { GameState } from './GameState';
+import { CarbonCreditCalculator } from './CarbonCreditCalculator';
+import TimeManager from './TimeManager';
+import RandomEventManager from './RandomEvent';
+
+export class ForestScene extends Phaser.Scene {
+  constructor() {
+    super({ key: 'ForestScene' });
+    this.gameState = new GameState();
+    this.environment = new Environment();
+    this.tileGenerator = new TileGenerator();
+    this.carbonCalculator = new CarbonCreditCalculator();
+    this.plants = [];
+    this.tiles = [];
+    this.gameData = {
+      carbonCredits: 0,
+      energyOrbs: 100,
+      currentArea: 'Forest Valley',
+      co2Absorbed: 0,
+      co2Target: 1000,
+      areaHealth: 100,
+      // Thêm các trường mới cho tín chỉ cacbon
+      carbonCreditsHistory: [],
+      totalInvestment: 0,
+      carbonPriceHistory: [],
+      lastCalculationTime: Date.now()
+    };
+    this.updateCallback = null;
+    this.pauseCallback = null;
+    this.currentTool = 'plant';
+    this.tickInterval = 1000;
+    this.tickCount = 0;
+    this.isDragging = false;
+    this.treeStatsCallback = null;
+  }
+
+  setTreeStatsCallback(callback) {
+  this.treeStatsCallback = callback;
+  
+}
+
+
+
+notifyTreeStats() {
+  const treesAlive = this.getTreeStats();
+  const totalTrees = this.plants.length;
+  const matureTrees = this.plants.filter(p => p.stage === 'mature' && p.status === 'normal').length;
+
+  const stats = {
+    total: totalTrees,
+    alive: treesAlive,
+    mature: matureTrees
+  };
+
+  if (this.treeStatsCallback) {
+    this.treeStatsCallback(stats);
+  }
+
+  // GỌI updateGameData để HUD cập nhật
+  if (this.updateCallback) {
+    this.updateCallback({
+      treesAlive,
+      totalTrees
+    });
+  }
+}
+
+
+
+
+
+  getTreeStats() {
+  return this.plants.filter(p => p.stage !== 'dead' && p.status === 'normal').length;
+}
+
+
+  preload() {
+    this.load.image('Sapling', 'assetGame/Sapling.png');
+    this.load.image('GrowingTree', 'assetGame/GrowingTree.png');
+    this.load.image('Trees', 'assetGame/Trees.png');
+    this.load.image('DeadTree', 'assetGame/DeadTree.png');
+    this.load.image('TreeRoot', 'assetGame/TreeRoot.png');
+    this.load.image('Rock', 'assetGame/Rock.png');
+    this.load.image('Wheatfield', 'assetGame/Wheatfield.jpg');
+    this.load.image('1WaterCell', 'assetGame/1WaterCell.png');
+  }
+
+  create() {
+    const mapTiles = 62;
+    const tileSize = 16;
+    this.tileSize = tileSize;
+
+    this.createTileMap();
+//
+    const mapSize = mapTiles * tileSize;
+    this.cameras.main.setZoom(1);
+    this.cameras.main.setBounds(0, 0, mapSize, mapSize);
+
+    this.setupCameraControls();
+    this.setupInput();
+    this.startGameLoop();
+    this.sendEnvironmentData();
+  }
+//
+  createTileMap() {
+    const mapTiles = 62;
+    const tileSize = 16;
+
+    for (let x = 0; x < mapTiles; x++) {
+      this.tiles[x] = [];
+      for (let y = 0; y < mapTiles; y++) {
+        const tileX = x * tileSize;
+        const tileY = y * tileSize;
+        const tileType = this.tileGenerator.getTileType(x, y);
+        const tileSpriteKey = tileType.type === 'dirt' ? 'Wheatfield' : '1WaterCell';
+
+        const tile = this.add.image(tileX + tileSize / 2, tileY + tileSize / 2, tileSpriteKey);
+        tile.setDisplaySize(tileSize, tileSize);
+        tile.setDepth(0);
+        tile.tileData = {
+          x,
+          y,
+          type: tileType.type,
+          plant: null,
+          watered: false,
+          fertilized: false,
+          isRock: tileType.isRock || false
+        };
+
+        this.tiles[x][y] = tile;
+
+        if (tileType.isRock) {
+          const rock = this.add.image(tileX + tileSize / 2, tileY + tileSize / 2, 'Rock');
+          rock.setDisplaySize(tileSize, tileSize);
+          rock.setDepth(1);
+          tile.tileData.rock = rock;
+        }
+
+        if (tileType.type === 'dirt' && tileType.hasTree && !tileType.isRock) {
+          const plant = new Plant(this, tileX + tileSize / 2, tileY + tileSize / 2, 'trees');
+          plant.stage = 'mature';
+          plant.setSpriteByStage();
+          tile.tileData.plant = plant;
+          this.plants.push(plant);
+        }
+      }
+    }
+    this.notifyTreeStats(); // ✅ cập nhật số cây ngay khi tạo bản đồ
+  }
+
+setTool(tool) {
+  console.log("ForestScene: Tool set to", tool); // <-- Thêm log
+  this.currentTool = tool;
+}
+
+
+
+setupCameraControls() {
+  const cam = this.cameras.main;
+
+  this.input.on('pointerdown', (pointer) => {
+    if (pointer.button === 0) {
+      this.dragStartX = pointer.x;
+      this.dragStartY = pointer.y;
+      this.isDragging = false; // reset lại
+    }
+  });
+
+  this.input.on('pointermove', (pointer) => {
+    if (pointer.isDown) { // ✅ CHỈ DRAG KHI ĐANG GIỮ CHUỘT
+      const dx = pointer.x - this.dragStartX;
+      const dy = pointer.y - this.dragStartY;
+
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        this.isDragging = true;
+        cam.scrollX -= dx;
+        cam.scrollY -= dy;
+        this.dragStartX = pointer.x;
+        this.dragStartY = pointer.y;
+      }
+    }
+  });
+
+  this.input.on('pointerup', (pointer) => {
+    const wasDragging = this.isDragging;
+    this.isDragging = false;
+
+    if (!wasDragging && pointer.button === 0) {
+      this.handleMouseClick(pointer); // chỉ click nếu KHÔNG drag
+    }
+  });
+}
+
+
+setupInput() {
+  this.input.on('pointerdown', (pointer) => {
+    console.log("Pointer down", pointer.button, "Dragging:", this.isDragging); // 👈 Thêm log
+
+    if (pointer.button === 0 && !this.input.keyboard.addKey('SPACE').isDown && !this.isDragging) {
+      this.handleMouseClick(pointer);
+    }
+  });
+
+  this.input.keyboard.on('keydown-ESC', () => {
+    if (this.pauseCallback) this.pauseCallback();
+  });
+
+  this.input.keyboard.on('keydown-ONE', () => this.currentTool = 'plant');
+  this.input.keyboard.on('keydown-TWO', () => this.currentTool = 'water');
+  this.input.keyboard.on('keydown-THREE', () => this.currentTool = 'fertilize');
+}
+
+
+handleMouseClick(pointer) {
+  const worldPoint = pointer.positionToCamera(this.cameras.main);
+  const tileX = Math.floor(worldPoint.x / this.tileSize);
+  const tileY = Math.floor(worldPoint.y / this.tileSize);
+
+  console.log("Mouse click at world:", worldPoint, "=> tile:", tileX, tileY, "Current tool:", this.currentTool); // 👈
+
+  if (tileX < 0 || tileY < 0 || tileX >= 62 || tileY >= 62) return;
+
+  const tile = this.tiles[tileX][tileY];
+  console.log("Tile clicked:", tile.tileData); // 👈
+
+  if (tile.tileData.plant && tile.tileData.plant.stage === 'dead') {
+    if (tile.tileData.plant.status === 'deadtree') {
+      tile.tileData.plant.setTreeRoot();
+    } else if (tile.tileData.plant.status === 'treeroot') {
+      tile.tileData.plant.destroy();
+      tile.tileData.plant = null;
+    }
+    return;
+  }
+
+  switch (this.currentTool) {
+    case 'plant':
+      console.log("Calling plantSeed"); // 👈
+      this.plantSeed(tileX, tileY);
+      break;
+    case 'water':
+      console.log("Calling waterTile"); // 👈
+      this.waterTile(tileX, tileY);
+      break;
+    case 'fertilize':
+      console.log("Calling fertilizeTile"); // 👈
+      this.fertilizeTile(tileX, tileY);
+      break;
+  }
+}
+
+
+plantSeed(tileX, tileY) {
+  const tile = this.tiles[tileX][tileY];
+  console.log("Trying to plant at", tileX, tileY, "tileData:", tile.tileData); // 👈
+
+  if (
+    tile.tileData.type === 'dirt' &&
+    !tile.tileData.plant &&
+    !tile.tileData.isRock
+    // this.gameData.energyOrbs >= 10
+  ) {
+    console.log("Planting seed..."); // 👈
+    const plant = new Plant(
+      this,
+      tileX * this.tileSize + this.tileSize / 2,
+      tileY * this.tileSize + this.tileSize / 2,
+      'sapling'
+    );
+    tile.tileData.plant = plant;
+    this.plants.push(plant);
+    this.notifyTreeStats(); // 👈 thêm dòng này
+    // this.updateGameData({ energyOrbs: this.gameData.energyOrbs - 10 });
+  } else {
+    console.log("Cannot plant: check tile type or conditions"); // 👈
+  }
+}
+
+
+
+  waterTile(tileX, tileY) {
+    const tile = this.tiles[tileX][tileY];
+    if (tile.tileData.plant && !tile.tileData.watered && this.gameData.energyOrbs >= 5) {
+      tile.tileData.watered = true;
+      tile.tileData.plant.water();
+      this.updateGameData({ energyOrbs: this.gameData.energyOrbs - 5 });
+    }
+  }
+
+  fertilizeTile(tileX, tileY) {
+    const tile = this.tiles[tileX][tileY];
+    if (tile.tileData.plant && !tile.tileData.fertilized && this.gameData.energyOrbs >= 15) {
+      tile.tileData.fertilized = true;
+      tile.tileData.plant.fertilize();
+      this.updateGameData({ energyOrbs: this.gameData.energyOrbs - 15 });
+    }
+  }
+
+  startGameLoop() {
+    this.time.addEvent({
+      delay: this.tickInterval,
+      callback: this.gameTick,
+      callbackScope: this,
+      loop: true
+    });
+  }
+
+  gameTick() {
+    const disaster = RandomEventManager.getCurrentDisaster();
+    if (disaster) {
+      this.environment.temperature += 0.2;
+      this.environment.humidity -= 0.3;
+      this.environment.pH -= 0.1;
+      this.environment.airQuality -= 0.4;
+    }
+
+    if (!this.gameData) return;
+
+    this.tickCount++;
+    if (this.tickCount >= 60) {
+      this.tickCount = 0;
+      TimeManager.nextDay();
+      this.handleNewDay();
+    }
+
+    this.environment.update();
+    this.sendEnvironmentData();
+
+    let totalCarbonAbsorbed = 0;
+    this.plants.forEach(plant => {
+      let absorbed = plant.grow(this.environment);
+      if (disaster) absorbed *= 0.6;
+      totalCarbonAbsorbed += absorbed;
+
+      if (plant.isMature() && !plant.harvested) {
+        plant.harvest();
+        this.updateGameData({
+          carbonCredits: this.gameData.carbonCredits + 50,
+          co2Absorbed: this.gameData.co2Absorbed + plant.carbonRate
+        });
+      }
+    });
+
+    if (totalCarbonAbsorbed > 0) {
+      this.updateGameData({ co2Absorbed: this.gameData.co2Absorbed + totalCarbonAbsorbed });
+    }
+
+    // Tính toán tín chỉ cacbon mới
+    this.calculateCarbonCredits();
+
+    const health = Math.min(100, (this.gameData.co2Absorbed / this.gameData.co2Target) * 100);
+    this.updateGameData({ areaHealth: health });
+  }
+
+  handleNewDay() {
+    const currentDay = TimeManager.getCurrentDay();
+
+    this.plants.forEach(p => {
+      p.watered = false;
+      p.fertilized = false;
+    });
+
+    const stats = {
+      totalTrees: this.plants.length,
+      treesAlive: this.plants.filter(p => p.stage !== 'dead' && p.status === 'normal').length
+    };
+
+    const event = RandomEventManager.getRandomEvent(currentDay, stats);
+    this.lastEvent = event;
+
+    if (event) {
+      const alivePlants = this.plants.filter(p => p.stage !== 'dead' && p.status === 'normal');
+      const numAffected = Math.max(1, Math.floor(alivePlants.length * 0.2));
+
+      for (let i = 0; i < numAffected; i++) {
+        const idx = Math.floor(Math.random() * alivePlants.length);
+        alivePlants[idx].applyDisaster(event);
+        this.notifyTreeStats(); // 👈 cập nhật số cây sống sau thiên tai
+        alivePlants.splice(idx, 1);
+      }
+
+      this.showDisasterNotification(event);
+    }
+
+    window.dispatchEvent(new CustomEvent('dayEvent', { detail: { day: currentDay, event } }));
+  }
+
+  sendEnvironmentData() {
+    const env = this.environment.getEnvironmentalFactors();
+    window.dispatchEvent(new CustomEvent('environmentUpdate', { detail: { environment: env } }));
+  }
+
+  updateGameData(data) {
+    if (this.updateCallback) this.updateCallback(data);
+  }
+
+  // Tính toán tín chỉ cacbon dựa trên cây trồng và môi trường
+  calculateCarbonCredits() {
+    const currentTime = Date.now();
+    const timeElapsed = (currentTime - this.gameData.lastCalculationTime) / 1000; // Giây
+    
+    // Tính tín chỉ mới
+    const newCredits = this.carbonCalculator.calculateRealTimeCredits(
+      this.plants, 
+      this.environment.getEnvironmentalFactors(), 
+      timeElapsed
+    );
+    
+    // Cập nhật game data
+    const updatedData = {
+      carbonCredits: this.gameData.carbonCredits + newCredits,
+      lastCalculationTime: currentTime,
+      carbonCreditsHistory: [...this.gameData.carbonCreditsHistory, {
+        timestamp: currentTime,
+        credits: newCredits,
+        total: this.gameData.carbonCredits + newCredits
+      }]
+    };
+    
+    this.updateGameData(updatedData);
+    
+    // Cập nhật local gameData
+    Object.assign(this.gameData, updatedData);
+  }
+
+  update(time, delta) {
+    this.plants.forEach(p => p.update(delta));
+  }
+
+  pauseGame() {
+    this.scene.pause();
+    this.physics.world.pause();
+    this.time.timeScale = 0;
+    this.isGamePaused = true;
+  }
+
+  resumeGame() {
+    this.scene.resume();
+    this.physics.world.resume();
+    this.time.timeScale = 1;
+    this.isGamePaused = false;
+  }
+
+  setPaused(paused) {
+    paused ? this.pauseGame() : this.resumeGame();
+  }
+
+  setGameData(data) {
+    this.gameData = { ...this.gameData, ...data };
+    
+    // Cập nhật lastCalculationTime nếu có dữ liệu mới
+    if (data.lastCalculationTime) {
+      this.gameData.lastCalculationTime = data.lastCalculationTime;
+    }
+  }
+
+  setUpdateCallback(callback) {
+    this.updateCallback = callback;
+  }
+
+  setPauseCallback(callback) {
+    this.pauseCallback = callback;
+  }
+
+  setTool(tool) {
+    this.currentTool = tool;
+  }
+
+  showDisasterNotification(event) {
+    const text = this.add.text(this.sys.game.config.width / 2, 40, `Thiên tai xảy ra: ${event}`, {
+      font: '20px Arial',
+      fill: '#ff3333',
+      backgroundColor: '#fff',
+      padding: { x: 10, y: 5 },
+      align: 'center'
+    }).setOrigin(0.5);
+    text.setDepth(100);
+    this.time.delayedCall(2000, () => text.destroy());
+  }
+}
